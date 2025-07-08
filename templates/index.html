@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ゴルフ組一覧</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", sans-serif;
+      background-color: #f5f5f7;
+      color: #1d1d1f;
+      margin: 0;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+
+    form {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    select#round {
+      font-size: 18px;
+      padding: 10px 16px;
+      border-radius: 12px;
+      border: 1px solid #ccc;
+      background-color: #ffffff;
+      color: #333;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    button[type="submit"] {
+      font-size: 18px;
+      padding: 10px 24px;
+      border-radius: 12px;
+      background-color: #007aff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    }
+
+    button[type="submit"]:hover {
+      background-color: #005fcc;
+    }
+
+    .group {
+      margin-bottom: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .player {
+      background-color: #fff;
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      transition: box-shadow 0.2s;
+      max-width: 340px;
+    }
+
+    .player:hover {
+      box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+    }
+
+    .player div:first-child {
+      font-size: 18px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .choice-result {
+      margin-top: 8px;
+      font-weight: 600;
+      color: #007aff;
+    }
+
+    button {
+      font-size: 16px;
+      padding: 8px 16px;
+      margin-right: 8px;
+      margin-top: 6px;
+      border: none;
+      border-radius: 10px;
+      background-color: #e5e5ea;
+      color: #000;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    button.selected {
+      background-color: #007aff;
+      color: #fff;
+    }
+
+    button:hover {
+      background-color: #d0d0d5;
+    }
+
+    #summary {
+      font-size: 20px;
+      font-weight: 500;
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 12px 16px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      margin-bottom: 24px;
+    }
+
+    @media (min-width: 600px) {
+      .group {
+        flex-direction: row;
+        flex-wrap: wrap;
+      }
+      .player {
+        margin-right: 12px;
+      }
+    }
+  </style>
+
+</head>
+<body>
+  <h1>ゴルフ組一覧</h1>
+
+  <form method="get" action="/">
+    <label for="round">ラウンド:</label>
+    <select name="round" id="round">
+      <option value="1st" {% if selected_round == '1st' %}selected{% endif %}>1st</option>
+      <option value="2nd" {% if selected_round == '2nd' %}selected{% endif %}>2nd</option>
+      <option value="3rd" {% if selected_round == '3rd' %}selected{% endif %}>3rd</option>
+      <option value="FR" {% if selected_round == 'FR' %}selected{% endif %}>FR</option>
+    </select>
+    <button type="submit">表示</button>
+  </form>
+
+  <hr>
+
+        <div id="summary" style="font-size: 1.2em; margin-top: 10px;">
+          狙う：<span id="count-aim">0</span>人
+          ｜　
+          狙わない：<span id="count-noaim">0</span>人
+        </div>
+
+  {% for group in groups %}
+    {% set group_number = loop.index %}
+    <h2 style="margin-top: 24px;">{{ group_number }} 組</h2> 
+    <div class="group">
+      {% for player in group %}
+        <div class="player" data-code="{{ player.code }}" data-group="{{ group_number }}" data-round="{{ selected_round }}">
+          <div>{{ player.name }}</div>
+
+          <button onclick="choose(this, '狙う')">狙う</button>
+          <button onclick="choose(this, '狙わない')">狙わない</button>
+
+          <div class="choice-result" style="display:none;">{{ player.choice }}</div>
+
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+
+
+  <script>
+    function toggleChoices(playerDiv) {
+      const buttons = playerDiv.querySelector('.choice-buttons');
+      buttons.style.display = (buttons.style.display === 'block') ? 'none' : 'block';
+    }
+
+    function choose(button, choice) {
+      const playerDiv = button.closest('.player');
+      const resultDiv = playerDiv.querySelector('.choice-result');
+      const currentChoice = resultDiv.innerText;
+
+      // 選択状態の更新
+      if (currentChoice === choice) {
+        resultDiv.innerText = '';
+        sendChoice(playerDiv, '');
+      } else {
+        resultDiv.innerText = choice;
+        sendChoice(playerDiv, choice);
+      }
+
+      // ボタン色の更新（ここが追加ポイント）
+      const buttons = playerDiv.querySelectorAll("button");
+      buttons.forEach(btn => {
+        btn.classList.remove("selected");
+        if (btn.textContent === resultDiv.innerText) {
+          btn.classList.add("selected");
+        }
+      });
+
+      updateSummary();
+    }
+
+
+    function sendChoice(playerDiv, choice) {
+      const code = playerDiv.dataset.code;
+      const group = playerDiv.dataset.group;
+      const round = playerDiv.dataset.round;
+
+      const payload = {
+        code: code,
+        group: group,
+        round: round,
+        choice: choice
+      };
+
+      fetch("/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }).then(res => {
+        if (!res.ok) alert("送信失敗！");
+      });
+
+    }
+    function updateSummary() {
+      const allPlayers = document.querySelectorAll(".player");
+      let aim = 0;
+      let noaim = 0;
+
+      allPlayers.forEach(player => {
+        const result = player.querySelector(".choice-result");
+        const text = result.textContent.trim();
+        if (text === "狙う") aim++;
+        else if (text === "狙わない") noaim++;
+      });
+
+      document.getElementById("count-aim").textContent = aim;
+      document.getElementById("count-noaim").textContent = noaim;
+    }
+
+    window.onload = function () {
+    document.querySelectorAll(".player").forEach(player => {
+      const result = player.querySelector(".choice-result").textContent.trim();
+      const buttons = player.querySelectorAll("button");
+      buttons.forEach(btn => {
+        btn.classList.remove("selected");
+        if (btn.textContent === result) {
+          btn.classList.add("selected");
+        }
+      });
+    });
+    updateSummary();  // 初回集計
+}
+
+
+
+  </script>
+</body>
+</html>
