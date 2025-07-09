@@ -6,7 +6,7 @@ from google.oauth2.service_account import Credentials
 app = Flask(__name__)
 
 # 環境変数からパスを取得（Renderが設定してくれる）
-CREDENTIALS_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+# CREDENTIALS_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -14,7 +14,9 @@ SCOPES = [
 ]
 
 # 認証情報の読み込み（ここを環境変数ベースに）
-creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
+creds = Credentials.from_service_account_file(
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"], scopes=SCOPES
+)
 gc = gspread.authorize(creds)
 spreadsheet = gc.open("GolfPairingsApp2025")  # 君のシート名に合わせて！
 
@@ -102,4 +104,4 @@ def submit():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=10000)
