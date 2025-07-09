@@ -186,12 +186,18 @@
       // 選択状態の更新
       if (currentChoice === choice) {
         resultDiv.innerText = '';
+        applyButtonStyle(playerDiv, '');
         sendChoice(playerDiv, '');
       } else {
         resultDiv.innerText = choice;
+        applyButtonStyle(playerDiv, choice);
         sendChoice(playerDiv, choice);
       }
 
+      updateSummary();
+    }
+
+    function applyButtonStyle(playerDiv, currentValue) {
       const buttons = playerDiv.querySelectorAll("button");
       buttons.forEach(btn => {
         btn.classList.remove("selected");
@@ -199,15 +205,13 @@
 
       requestAnimationFrame(() => {
         buttons.forEach(btn => {
-          if (btn.textContent === resultDiv.innerText) {
+          if (btn.textContent === currentValue) {
             btn.classList.add("selected");
           }
         });
       });
-
-
-      updateSummary();
     }
+
 
 
     function sendChoice(playerDiv, choice) {
@@ -217,7 +221,7 @@
 
       const payload = {
         code: code,
-        group: group,
+        group: parseInt(group),
         round: round,
         choice: choice
       };
@@ -229,10 +233,18 @@
         },
         body: JSON.stringify(payload),
       }).then(res => {
-        if (!res.ok) alert("送信失敗！");
+        if (!res.ok) {
+          res.text().then(msg => {
+            console.error("サーバーエラー:", msg);
+            alert("送信失敗！");
+          });
+        }
+      }).catch(err => {
+        console.error("通信失敗:", err);
+        alert("通信エラー！");
       });
-
     }
+
     function updateSummary() {
       const allPlayers = document.querySelectorAll(".player");
       let aim = 0;
@@ -250,20 +262,23 @@
     }
 
     window.onload = function () {
-    document.querySelectorAll(".player").forEach(player => {
-      const result = player.querySelector(".choice-result").textContent.trim();
-      const buttons = player.querySelectorAll("button");
-      requestAnimationFrame(() => {
-        buttons.forEach(btn => {
-          btn.classList.remove("selected");
-          if (btn.textContent === result.textContent.trim()) {
-            btn.classList.add("selected");
-          }
+      document.querySelectorAll(".player").forEach(player => {
+        const result = player.querySelector(".choice-result").textContent.trim();
+        const buttons = player.querySelectorAll("button");
+
+        requestAnimationFrame(() => {
+          buttons.forEach(btn => {
+            btn.classList.remove("selected");
+            if (btn.textContent === result) {
+              btn.classList.add("selected");
+            }
+          });
         });
       });
-    });
-    updateSummary();  // 初回集計
-}
+      updateSummary();  // 初回集計
+    }
+
+
 
 
 
