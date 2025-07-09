@@ -5,14 +5,16 @@ from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
 
-# Google Sheets 認証設定
+# 環境変数からパスを取得（Renderが設定してくれる）
+CREDENTIALS_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive'
+    'https://www.googleapis.com/auth/drive',
 ]
-creds = Credentials.from_service_account_file(
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"], scopes=SCOPES
-)
+
+# 認証情報の読み込み（ここを環境変数ベースに）
+creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
 gc = gspread.authorize(creds)
 spreadsheet = gc.open("GolfPairingsApp2025")  # 君のシート名に合わせて！
 
