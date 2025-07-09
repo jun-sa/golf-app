@@ -188,16 +188,27 @@
       // 選択状態の更新
       if (currentChoice === choice) {
         resultDiv.innerText = '';
-        applyButtonStyle(playerDiv, '');
         sendChoice(playerDiv, '');
+        updateButtonColors(playerDiv, '');
       } else {
         resultDiv.innerText = choice;
-        applyButtonStyle(playerDiv, choice);
         sendChoice(playerDiv, choice);
+        updateButtonColors(playerDiv, choice);
       }
 
       updateSummary();
     }
+
+    function updateButtonColors(playerDiv, selectedChoice) {
+      const buttons = playerDiv.querySelectorAll("button");
+      buttons.forEach(btn => {
+        btn.classList.remove("selected");
+        if (btn.textContent === selectedChoice) {
+          btn.classList.add("selected");
+        }
+      });
+    }
+
 
     function applyButtonStyle(playerDiv, currentValue) {
       const buttons = playerDiv.querySelectorAll("button");
@@ -263,12 +274,10 @@
       document.getElementById("count-noaim").textContent = noaim;
     }
 
-    window.onload = function () {
-      document.querySelectorAll(".player").forEach(player => {
-        const result = player.querySelector(".choice-result").textContent.trim();
-        const buttons = player.querySelectorAll("button");
-
-        requestAnimationFrame(() => {
+      window.onload = function () {
+        document.querySelectorAll(".player").forEach(player => {
+          const result = player.querySelector(".choice-result").textContent.trim();
+          const buttons = player.querySelectorAll("button");
           buttons.forEach(btn => {
             btn.classList.remove("selected");
             if (btn.textContent === result) {
@@ -276,9 +285,8 @@
             }
           });
         });
-      });
-      updateSummary();  // 初回集計
-    }
+        updateSummary();  // 初回集計
+      }
 
 
 
