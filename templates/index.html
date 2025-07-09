@@ -248,7 +248,7 @@
     document.querySelectorAll(".player").forEach(player => {
       const result = player.querySelector(".choice-result").textContent.trim();
       const buttons = player.querySelectorAll("button");
-      requestAnimationFrame(() => {
+      setTimeout(() => {
         buttons.forEach(btn => {
           btn.classList.remove("selected");
           if (btn.textContent === resultDiv.innerText) {
