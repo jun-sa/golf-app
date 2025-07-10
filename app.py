@@ -3,8 +3,20 @@ import gspread
 import os
 from google.oauth2.service_account import Credentials
 from threading import Lock
+import threading
+import requests
+import time
 
 app = Flask(__name__)
+
+def ping_render():
+    while True:
+        try:
+            res = requests.get("https://golf-app-4i3n.onrender.com")
+            print(f"[PING] Status: {res.status_code}")
+        except Exception as e:
+            print(f"[PING ERROR] {e}")
+        time.sleep(180)  # 3分おき
 
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -113,11 +125,7 @@ def submit():
 
     return jsonify({"status": "not found"}), 404
 
-@app.route("/ping")
-def ping():
-    print("🔁 Ping received!")
-    return "pong"
-
 
 if __name__ == "__main__":
+    threading.Thread(target=ping_render, daemon=True).start()
     app.run(host="0.0.0.0", port=10000)
