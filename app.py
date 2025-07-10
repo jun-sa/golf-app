@@ -21,8 +21,9 @@ gc = gspread.authorize(creds)
 spreadsheet = gc.open("GolfPairingsApp2025")  # 君のシート名に合わせて！
 
 @app.route("/")
+@app.route("/")
 def index():
-    round = request.args.get("round", "1st")  # ← デフォルト1st
+    round = request.args.get("round", "1st")
     sheet = spreadsheet.worksheet(f"Pairings_{round}")
     records = sheet.get_all_records()
 
@@ -30,27 +31,29 @@ def index():
     player_records = player_sheet.get_all_records()
     code_to_name = {str(row["Code"]): row["Name"] for row in player_records}
 
-    # データをグループ化（1組ごとに分けるなど）
+    # 修正後：1行に3人分の選手データを展開してグループ化
     groups = []
-    group = []
-    current_group = 1
     for row in records:
-        if row["Group"] != current_group:
+        group = []
+        group_number = row.get("Group")
+        for i in range(1, 4):  # Code1～Code3
+            code = row.get(f"Code{i}")
+            choice = row.get(f"Choice{i}")
+            if code:  # 空でなければ
+                group.append({
+                    "name": code_to_name.get(str(code), "Unknown"),
+                    "code": str(code),
+                    "choice": choice,
+                    "group": group_number
+                })
+        if group:
             groups.append(group)
-            group = []
-            current_group += 1
-        group.append({
-            "name": code_to_name.get(str(row["Code"]), "Unknown"),
-            "code": row["Code"],
-            "choice": row["Choice"]
-        })
-    groups.append(group)  # 最後のグループを追加
 
     return render_template("index.html", groups=groups, selected_round=round)
 
 
 
-@app.route("/submit", methods=["POST"])
+
 @app.route("/submit", methods=["POST"])
 def submit():
     data = request.get_json()
