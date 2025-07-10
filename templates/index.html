@@ -110,8 +110,8 @@
     }
 
     button {
-      font-size: 18px;
-      padding: 10px 20px;
+      font-size: 16px;
+      padding: 8px 16px;
       margin-right: 8px;
       margin-top: 6px;
       border: none;
@@ -119,6 +119,7 @@
       background-color: #e5e5ea;
       color: #000;
       cursor: pointer;
+      transition: background-color 0.2s;
     }
 
     button.selected {
@@ -126,9 +127,15 @@
       color: #fff;
     }
 
+    button.selected:hover {
+      background-color: #007aff;
+      color: #fff;
+    }
+
     button:hover {
       background-color: #d0d0d5;
     }
+
 
     @media (min-width: 600px) {
       .group {
