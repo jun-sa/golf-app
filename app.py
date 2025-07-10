@@ -113,5 +113,11 @@ def submit():
 
     return jsonify({"status": "not found"}), 404
 
+@app.route("/ping")
+def ping():
+    print("🔁 Ping received!")
+    return "pong"
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
