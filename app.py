@@ -22,33 +22,31 @@ spreadsheet = gc.open("GolfPairingsApp2025")  # 君のシート名に合わせ�
 
 @app.route("/")
 def index():
-    round = request.args.get("round", "1st")  # ← ラウンドをGETパラメータで取得
+    round = request.args.get("round", "1st")  # ← デフォルト1st
     sheet = spreadsheet.worksheet(f"Pairings_{round}")
     records = sheet.get_all_records()
 
     player_sheet = spreadsheet.worksheet("Players")
     player_records = player_sheet.get_all_records()
     code_to_name = {str(row["Code"]): row["Name"] for row in player_records}
-    
-    grouped = []
-    for row in records:
-        group = []
-        for i in range(1, 4):
-            code = row.get(f"Code{i}")
-            choice = row.get(f"Choice{i}", "")
-            if code:
-                code_str = str(code)
-                name = code_to_name.get(code_str, "不明")  # 万が一対応がなかったら「不明」に
-                group.append({
-                    "code": code_str,
-                    "name": name,
-                    "choice": choice
-                })
-        if group:
-            grouped.append(group)
 
-    # 選手一覧は変わらないならPlayersシート読まなくてもいい
-    return render_template("index.html", groups=grouped, selected_round=round)
+    # データをグループ化（1組ごとに分けるなど）
+    groups = []
+    group = []
+    current_group = 1
+    for row in records:
+        if row["Group"] != current_group:
+            groups.append(group)
+            group = []
+            current_group += 1
+        group.append({
+            "name": code_to_name.get(str(row["Code"]), "Unknown"),
+            "code": row["Code"],
+            "choice": row["Choice"]
+        })
+    groups.append(group)  # 最後のグループを追加
+
+    return render_template("index.html", groups=groups, selected_round=round)
 
 
 

@@ -156,10 +156,11 @@
     <form method="get" action="/">
       <label for="round">ラウンド:</label>
       <select name="round" id="round">
-        <option value="1st">1st</option>
-        <option value="2nd">2nd</option>
-        <option value="3rd">3rd</option>
-        <option value="FR">FR</option>
+        <option value="1st" {% if selected_round == '1st' %}selected{% endif %}>1st</option>
+        <option value="2nd" {% if selected_round == '2nd' %}selected{% endif %}>2nd</option>
+        <option value="3rd" {% if selected_round == '3rd' %}selected{% endif %}>3rd</option>
+        <option value="FR"  {% if selected_round == 'FR'  %}selected{% endif %}>FR</option>
+
       </select>
       <button type="submit">表示</button>
     </form>
