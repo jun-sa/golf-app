@@ -53,6 +53,7 @@ def index():
 
 
 @app.route("/submit", methods=["POST"])
+@app.route("/submit", methods=["POST"])
 def submit():
     data = request.get_json()
     code = data["code"]
@@ -62,42 +63,50 @@ def submit():
 
     sheet_name = f"Pairings_{round}"
     sheet = spreadsheet.worksheet(sheet_name)
-    records = sheet.get_all_records()
+    records = sheet.get_all_records()  # ここだけで1回に！
+
+    target_row_idx = None
+    target_col_letter = None
 
     for idx, row in enumerate(records, start=2):
         if row.get("Group") == group:
             for i in range(1, 4):
                 if str(row.get(f"Code{i}")) == code:
-                    col_letter = chr(ord('E') + i)
-                    sheet.update(f"{col_letter}{idx}", [[choice]])
+                    target_row_idx = idx
+                    target_col_letter = chr(ord('E') + i)
+                    break
+        if target_row_idx:
+            break
 
-                    # ★↓↓↓ 集計してSummaryシートに反映する処理 ↓↓↓
-                    summary_sheet_name = f"Summary_{round}"
-                    summary_sheet = spreadsheet.worksheet(summary_sheet_name)
+    if target_row_idx and target_col_letter:
+        # 更新処理（Choice列）
+        sheet.update(f"{target_col_letter}{target_row_idx}", [[choice]])
 
-                    # 👇書き込んだ後、もう一回最新データ取得
-                    records = sheet.get_all_records()
+        # 💡再び読み直さずに、今の records から集計！
+        all_choices = []
+        for row in records:
+            for j in range(1, 4):
+                if row.get(f"Code{j}"):
+                    val = str(row.get(f"Choice{j}", "")).strip()
+                    if row.get(f"Group") == group and str(row.get(f"Code{j}")) == code:
+                        val = choice  # 自分の選択を反映（↑はまだ古いままやから）
 
+                    if val:
+                        all_choices.append(val)
 
-                    # 集計処理（狙う／狙わないカウント）
-                    all_choices = []
-                    for row2 in records:
-                        for j in range(1, 4):
-                            if row2.get(f"Code{j}"):
-                                val = str(row2.get(f"Choice{j}", "")).strip()
-                                if val:
-                                    all_choices.append(val)
+        aim_count = all_choices.count("狙う")
+        noaim_count = all_choices.count("狙わない")
 
-                    aim_count = all_choices.count("狙う")
-                    noaim_count = all_choices.count("狙わない")
+        # Summary反映
+        summary_sheet_name = f"Summary_{round}"
+        summary_sheet = spreadsheet.worksheet(summary_sheet_name)
+        summary_sheet.update("A2", [[aim_count]])
+        summary_sheet.update("B2", [[noaim_count]])
 
-                    # Summaryシートに反映
-                    summary_sheet.update("A2", [[aim_count]])
-                    summary_sheet.update("B2", [[noaim_count]])
+        return jsonify({"status": "ok"})
 
-                    return jsonify({"status": "ok"})
-    
     return jsonify({"status": "not found"}), 404
+
 
 
 
