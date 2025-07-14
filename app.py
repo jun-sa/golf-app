@@ -12,7 +12,7 @@ app = Flask(__name__)
 def ping_render():
     while True:
         try:
-            res = requests.get("https://golf-app-4i3n.onrender.com")
+            res = requests.get("https://golf-app-4i3n.onrender.com/ping")
             print(f"[PING] Status: {res.status_code}")
         except Exception as e:
             print(f"[PING ERROR] {e}")
@@ -54,7 +54,7 @@ def index():
 
     player_sheet = spreadsheet.worksheet("Players")
     player_records = player_sheet.get_all_records()
-    code_to_name = {str(row["Code"]): row["Name"] for row in player_records}
+    code_to_name = cache["code_to_name"]  # これだけで十分
 
     # 修正後：1行に3人分の選手データを展開してグループ化
     groups = []
@@ -124,6 +124,10 @@ def submit():
         return jsonify({"status": "ok"})
 
     return jsonify({"status": "not found"}), 404
+
+@app.route("/ping")
+def ping():
+    return "pong", 200
 
 
 if __name__ == "__main__":
