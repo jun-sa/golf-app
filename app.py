@@ -129,7 +129,11 @@ def submit():
 def ping():
     return "pong", 200
 
+@app.before_first_request
+def activate_ping():
+    threading.Thread(target=ping_render, daemon=True).start()
+    
 
 if __name__ == "__main__":
-    threading.Thread(target=ping_render, daemon=True).start()
     app.run(host="0.0.0.0", port=10000)
+
