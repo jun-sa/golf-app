@@ -117,9 +117,9 @@ def submit():
                     elif val == "狙わない":
                         noaim_count += 1
 
-        summary_sheet = spreadsheet.worksheet(f"Summary_{round}")
-        summary_sheet.update("A2", [[aim_count]])
-        summary_sheet.update("B2", [[noaim_count]])
+        summary_sheet = spreadsheet.worksheet(f"Pairings_{round}")
+        summary_sheet.update("J2", [[aim_count]])
+        summary_sheet.update("K2", [[noaim_count]])
 
         return jsonify({"status": "ok"})
 
