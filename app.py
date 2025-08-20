@@ -82,32 +82,31 @@ def submit():
     try:
         data = request.get_json()
         code = str(data["code"]).strip()
-        group = int(str(data["group"]).strip())
-        rnd = data["round"]  # built-inのroundを避けるため変数名変更
+        group = int(str(data["group"]).strip())   # 型ズレ対策
+        rnd = data["round"]                       # 変数名 round は組込と被るので避ける
         choice = data["choice"]
 
         sheet = spreadsheet.worksheet(f"Pairings_{rnd}")
+        records = sheet.get_all_records()  # 1回だけ読む
 
-        # 1回だけ読み込み（records は dict のリスト）
-        records = sheet.get_all_records()
+        target_row_idx = None     # 2行目起点の行番号
+        target_choice_col = None  # F/G/H のいずれか
 
-        target_row_idx = None   # シート上の行番号（2起点）
-        target_choice_col = None  # F/G/H のどれか
-
-        # 行/列の特定（型ズレに強くする）
-        for idx, row in enumerate(records, start=2):  # 2行目から
-            row_group_raw = row.get("Group")
+        # 行・列を特定（型ズレ/空白に強く）
+        for idx, row in enumerate(records, start=2):
+            # Group を int に正規化して比較
+            row_group = None
             try:
-                row_group = int(str(row_group_raw).strip())
+                row_group = int(str(row.get("Group")).strip())
             except Exception:
-                row_group = None
+                pass
 
             if row_group == group:
                 for i in range(1, 4):  # Code1..3 / Choice1..3
                     cell_code = str(row.get(f"Code{i}", "")).strip()
                     if cell_code and cell_code == code:
                         target_row_idx = idx
-                        # Choice1..3 は列F..H（E=5 → E+1=F, E+2=G, E+3=H）
+                        # Choice1..3 は列 F/G/H（E=5 → E+1=F, E+2=G, E+3=H）
                         target_choice_col = chr(ord("E") + i)
                         break
             if target_row_idx:
@@ -116,23 +115,20 @@ def submit():
         if not target_row_idx or not target_choice_col:
             return jsonify({"status": "not found"}), 404
 
-        # まず選択を書き込む
+        # 該当セルを書き込み（選択反映）
         sheet.update(f"{target_choice_col}{target_row_idx}", [[choice]])
 
-        # いま手元にある records は古いので、変更箇所だけ差し替えて集計
+        # 既に読み込んだ records を使って集計（今変更したセルだけは choice を反映して数える）
         aim_count = 0
         noaim_count = 0
-
         for r_idx, row in enumerate(records, start=2):
             for j in range(1, 4):
                 code_j = row.get(f"Code{j}")
                 if not code_j:
                     continue
 
-                # 元の値
                 val = str(row.get(f"Choice{j}", "")).strip()
-
-                # さっき更新した該当セルだけは choice を反映して集計する
+                # さっき自分が更新したセルは最新 choice を使う
                 if r_idx == target_row_idx and (chr(ord("E") + j) == target_choice_col):
                     val = choice
 
@@ -141,7 +137,7 @@ def submit():
                 elif val == "狙わない":
                     noaim_count += 1
 
-        # J2:K2 を一発で更新（リクエスト1回・速度/安定性UP）
+        # ★ Pairings_* の J2:K2 に一発で書き込み（APIコール1回）
         sheet.update("J2:K2", [[aim_count, noaim_count]])
 
         return jsonify({"status": "ok", "aim": aim_count, "noaim": noaim_count})
@@ -150,6 +146,7 @@ def submit():
         import traceback
         print("ERROR in /submit:", e, traceback.format_exc(), flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 @app.route("/ping")
