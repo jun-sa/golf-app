@@ -48,33 +48,50 @@ load_player_cache()
 
 @app.route("/")
 def index():
-    round = request.args.get("round", "1st")
-    sheet = spreadsheet.worksheet(f"Pairings_{round}")
-    records = sheet.get_all_records()
+    try:
+        rnd = request.args.get("round", "1st")
+        sheet = spreadsheet.worksheet(f"Pairings_{rnd}")
+        # 空セルは空文字にしておくと扱いが安定する
+        records = sheet.get_all_records(default_blank="")
 
-    player_sheet = spreadsheet.worksheet("Players")
-    player_records = player_sheet.get_all_records()
-    code_to_name = cache["code_to_name"]  # これだけで十分
+        # もう Players は毎回読まない（キャッシュを使う）
+        code_to_name = cache["code_to_name"]
 
-    # 修正後：1行に3人分の選手データを展開してグループ化
-    groups = []
-    for row in records:
-        group = []
-        group_number = row.get("Group")
-        for i in range(1, 4):  # Code1～Code3
-            code = row.get(f"Code{i}")
-            choice = row.get(f"Choice{i}")
-            if code:  # 空でなければ
-                group.append({
-                    "name": code_to_name.get(str(code), "Unknown"),
-                    "code": str(code),
-                    "choice": choice,
-                    "group": group_number
-                })
-        if group:
-            groups.append(group)
+        groups = []
+        for row in records:
+            group = []
+            group_number = row.get("Group")
+            # Group が 1.0 や "1 " のような値でも扱えるようにしておく
+            try:
+                if group_number is not None and str(group_number).strip() != "":
+                    group_number = int(float(str(group_number).strip()))
+            except Exception:
+                # 型変換できなくても致命ではないのでそのまま使う
+                pass
 
-    return render_template("index.html", groups=groups, selected_round=round)
+            for i in range(1, 3+1):  # Code1..Code3
+                code = row.get(f"Code{i}", "")
+                choice = row.get(f"Choice{i}", "")
+                code_str = str(code).strip()
+                if code_str:
+                    name = code_to_name.get(code_str, "不明")
+                    group.append({
+                        "name": name,
+                        "code": code_str,
+                        "choice": choice,
+                        "group": group_number
+                    })
+            if group:
+                groups.append(group)
+
+        return render_template("index.html", groups=groups, selected_round=rnd)
+
+    except Exception as e:
+        import traceback
+        print("ERROR in /:", e, traceback.format_exc(), flush=True)
+        # 画面は 500 のままでOKだが、ログに原因が出るように
+        return "Internal Server Error", 500
+
 
 
 @app.route("/submit", methods=["POST"])
