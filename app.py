@@ -9,6 +9,34 @@ import time
 
 app = Flask(__name__)
 
+# 既にある import 群の下あたりに追加
+from threading import Lock
+import threading
+
+ping_thread_started = False
+_ping_lock = Lock()
+
+def ensure_ping_thread():
+    """ping_render を一度だけ起動する"""
+    global ping_thread_started
+    with _ping_lock:
+        if not ping_thread_started:
+            threading.Thread(target=ping_render, daemon=True).start()
+            ping_thread_started = True
+            print("[PING] background thread started", flush=True)
+
+# Flask 3.x 用：最初のリクエスト時にだけ起動
+@app.before_request
+def _kickoff_ping():
+    if not ping_thread_started:
+        ensure_ping_thread()
+
+# ローカル実行対策（gunicorn では __main__ にならないが、念のため）
+if __name__ == "__main__":
+    ensure_ping_thread()
+    app.run(host="0.0.0.0", port=10000)
+
+
 def ping_render():
     while True:
         try:
@@ -170,10 +198,6 @@ def submit():
 @app.route("/ping")
 def ping():
     return "pong", 200
-
-@app.before_first_request
-def activate_ping():
-    threading.Thread(target=ping_render, daemon=True).start()
     
 
 if __name__ == "__main__":
