@@ -162,7 +162,7 @@ def submit():
             return jsonify({"status": "not found"}), 404
 
         # 該当セルを書き込み（選択反映）
-        # sheet.update(f"{target_choice_col}{target_row_idx}", [[choice]])
+        sheet.update(f"{target_choice_col}{target_row_idx}", [[choice]])
 
         # 既に読み込んだ records を使って集計（今変更したセルだけは choice を反映して数える）
         aim_count = 0
