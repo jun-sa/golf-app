@@ -9,46 +9,24 @@ import time
 
 app = Flask(__name__)
 
-# 既にある import 群の下あたりに追加
-from threading import Lock
-import threading
-
-ping_thread_started = False
-_ping_lock = Lock()
-
-def ensure_ping_thread():
-    """ping_render を一度だけ起動する"""
-    global ping_thread_started
-    with _ping_lock:
-        if not ping_thread_started:
-            threading.Thread(target=ping_render, daemon=True).start()
-            ping_thread_started = True
-            print("[PING] background thread started", flush=True)
-
-# Flask 3.x 用：最初のリクエスト時にだけ起動
-@app.before_request
-def _kickoff_ping():
-    if not ping_thread_started:
-        ensure_ping_thread()
-
-# ローカル実行対策（gunicorn では __main__ にならないが、念のため）
-if __name__ == "__main__":
-    ensure_ping_thread()
-    app.run(host="0.0.0.0", port=10000)
-
-
+# -----------------------------
+# keep-alive 用の /ping を3分おきに叩く
+# -----------------------------
 def ping_render():
     while True:
         try:
-            res = requests.get("https://golf-app-4i3n.onrender.com/ping")
-            print(f"[PING] Status: {res.status_code}")
+            res = requests.get("https://golf-app-4i3n.onrender.com/ping", timeout=10)
+            print(f"[PING] Status: {res.status_code}", flush=True)
         except Exception as e:
-            print(f"[PING ERROR] {e}")
-        time.sleep(180)  # 3分おき
+            print(f"[PING ERROR] {e}", flush=True)
+        time.sleep(180)  # 3分
 
+# -----------------------------
+# Google Sheets 認証
+# -----------------------------
 SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive',
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
 ]
 creds = Credentials.from_service_account_file(
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"], scopes=SCOPES
@@ -56,150 +34,115 @@ creds = Credentials.from_service_account_file(
 gc = gspread.authorize(creds)
 spreadsheet = gc.open("GolfPairingsApp2025")
 
-# プレイヤー情報のキャッシュ
-cache = {
-    "Players": [],
-    "code_to_name": {},
-    "lock": Lock()
-}
+# -----------------------------
+# Players キャッシュ
+# -----------------------------
+cache = {"Players": [], "code_to_name": {}, "lock": Lock()}
 
 def load_player_cache():
     with cache["lock"]:
         player_sheet = spreadsheet.worksheet("Players")
         player_records = player_sheet.get_all_records()
         cache["Players"] = player_records
-        cache["code_to_name"] = {
-            str(row["Code"]): row["Name"] for row in player_records
-        }
+        cache["code_to_name"] = {str(r["Code"]): r["Name"] for r in player_records}
 
 load_player_cache()
 
+# -----------------------------
+# 画面表示
+# -----------------------------
 @app.route("/")
 def index():
-    try:
-        rnd = request.args.get("round", "1st")
-        sheet = spreadsheet.worksheet(f"Pairings_{rnd}")
-        # 空セルは空文字にしておくと扱いが安定する
-        records = sheet.get_all_records(default_blank="")
+    round_ = request.args.get("round", "1st")
+    sheet = spreadsheet.worksheet(f"Pairings_{round_}")
+    records = sheet.get_all_records()
 
-        # もう Players は毎回読まない（キャッシュを使う）
-        code_to_name = cache["code_to_name"]
+    code_to_name = cache["code_to_name"]  # キャッシュ利用
 
-        groups = []
-        for row in records:
-            group = []
-            group_number = row.get("Group")
-            # Group が 1.0 や "1 " のような値でも扱えるようにしておく
-            try:
-                if group_number is not None and str(group_number).strip() != "":
-                    group_number = int(float(str(group_number).strip()))
-            except Exception:
-                # 型変換できなくても致命ではないのでそのまま使う
-                pass
-
-            for i in range(1, 3+1):  # Code1..Code3
-                code = row.get(f"Code{i}", "")
-                choice = row.get(f"Choice{i}", "")
-                code_str = str(code).strip()
-                if code_str:
-                    name = code_to_name.get(code_str, "不明")
-                    group.append({
-                        "name": name,
-                        "code": code_str,
+    # 1行=1組（Code1..3 / Choice1..3）を展開
+    groups = []
+    for row in records:
+        group = []
+        group_number = row.get("Group")
+        for i in range(1, 4):
+            code = row.get(f"Code{i}")
+            choice = row.get(f"Choice{i}")
+            if code:
+                group.append(
+                    {
+                        "name": code_to_name.get(str(code), "Unknown"),
+                        "code": str(code),
                         "choice": choice,
-                        "group": group_number
-                    })
-            if group:
-                groups.append(group)
+                        "group": group_number,
+                    }
+                )
+        if group:
+            groups.append(group)
 
-        return render_template("index.html", groups=groups, selected_round=rnd)
+    return render_template("index.html", groups=groups, selected_round=round_)
 
-    except Exception as e:
-        import traceback
-        print("ERROR in /:", e, traceback.format_exc(), flush=True)
-        # 画面は 500 のままでOKだが、ログに原因が出るように
-        return "Internal Server Error", 500
-
-
-
-
+# -----------------------------
+# 選択反映（セル1か所だけ更新）
+# ★ 合計(J2/K2)の書き込みは完全に削除
+# -----------------------------
 @app.route("/submit", methods=["POST"])
 def submit():
-    try:
-        data = request.get_json()
-        code = str(data["code"]).strip()
-        group = int(str(data["group"]).strip())   # 型ズレ対策
-        rnd = data["round"]                       # 変数名 round は組込と被るので避ける
-        choice = data["choice"]
+    data = request.get_json()
+    code = data["code"]
+    group = int(data["group"])
+    round_ = data["round"]
+    choice = data["choice"]
 
-        sheet = spreadsheet.worksheet(f"Pairings_{rnd}")
-        records = sheet.get_all_records()  # 1回だけ読む
+    sheet = spreadsheet.worksheet(f"Pairings_{round_}")
+    records = sheet.get_all_records()  # 行と列を特定するために1回だけ読む
 
-        target_row_idx = None     # 2行目起点の行番号
-        target_choice_col = None  # F/G/H のいずれか
+    target_row_idx = None
+    target_col_letter = None
 
-        # 行・列を特定（型ズレ/空白に強く）
-        for idx, row in enumerate(records, start=2):
-            # Group を int に正規化して比較
-            row_group = None
-            try:
-                row_group = int(str(row.get("Group")).strip())
-            except Exception:
-                pass
+    # 対象セル（Choice列）を探す
+    for idx, row in enumerate(records, start=2):  # ヘッダ1行のため +1、さらに1-basedで +1
+        if row.get("Group") == group:
+            for i in range(1, 4):  # Code1..3
+                if str(row.get(f"Code{i}")) == code:
+                    target_row_idx = idx
+                    # Choice1..3 は F..H 列（EがCode3なので Eの次=F が Choice1）
+                    target_col_letter = chr(ord("E") + i)
+                    break
+        if target_row_idx:
+            break
 
-            if row_group == group:
-                for i in range(1, 4):  # Code1..3 / Choice1..3
-                    cell_code = str(row.get(f"Code{i}", "")).strip()
-                    if cell_code and cell_code == code:
-                        target_row_idx = idx
-                        # Choice1..3 は列 F/G/H（E=5 → E+1=F, E+2=G, E+3=H）
-                        target_choice_col = chr(ord("E") + i)
-                        break
-            if target_row_idx:
-                break
+    if not (target_row_idx and target_col_letter):
+        return jsonify({"status": "not found"}), 404
 
-        if not target_row_idx or not target_choice_col:
-            return jsonify({"status": "not found"}), 404
+    # 対象セルのみ更新（API 1回）
+    sheet.update(f"{target_col_letter}{target_row_idx}", [[choice]])
 
-        # 該当セルを書き込み（選択反映）
-        sheet.update(f"{target_choice_col}{target_row_idx}", [[choice]])
+    # ★ 集計の書き込みはしない（シートの数式で自動集計）
+    return jsonify({"status": "ok"})
 
-        # 既に読み込んだ records を使って集計（今変更したセルだけは choice を反映して数える）
-        aim_count = 0
-        noaim_count = 0
-        for r_idx, row in enumerate(records, start=2):
-            for j in range(1, 4):
-                code_j = row.get(f"Code{j}")
-                if not code_j:
-                    continue
-
-                val = str(row.get(f"Choice{j}", "")).strip()
-                # さっき自分が更新したセルは最新 choice を使う
-                if r_idx == target_row_idx and (chr(ord("E") + j) == target_choice_col):
-                    val = choice
-
-                if val == "狙う":
-                    aim_count += 1
-                elif val == "狙わない":
-                    noaim_count += 1
-
-        # ★ Pairings_* の J2:K2 に一発で書き込み（APIコール1回）
-        # sheet.update("J2:K2", [[aim_count, noaim_count]])
-
-        return jsonify({"status": "ok", "aim": aim_count, "noaim": noaim_count})
-
-    except Exception as e:
-        import traceback
-        print("ERROR in /submit:", e, traceback.format_exc(), flush=True)
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-
+# -----------------------------
+# ping エンドポイント & 一度だけ起動
+# -----------------------------
 @app.route("/ping")
 def ping():
     return "pong", 200
-    
+
+_ping_started = False
+_ping_lock = Lock()
+
+def ensure_ping_thread():
+    global _ping_started
+    with _ping_lock:
+        if not _ping_started:
+            threading.Thread(target=ping_render, daemon=True).start()
+            _ping_started = True
+            print("[PING] background thread started", flush=True)
+
+@app.before_request
+def _kickoff_ping():
+    if not _ping_started:
+        ensure_ping_thread()
 
 if __name__ == "__main__":
+    ensure_ping_thread()
     app.run(host="0.0.0.0", port=10000)
-
