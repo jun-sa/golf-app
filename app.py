@@ -79,51 +79,78 @@ def index():
 
 @app.route("/submit", methods=["POST"])
 def submit():
-    data = request.get_json()
-    code = data["code"]
-    group = int(data["group"])
-    round = data["round"]
-    choice = data["choice"]
+    try:
+        data = request.get_json()
+        code = str(data["code"]).strip()
+        group = int(str(data["group"]).strip())
+        rnd = data["round"]  # built-inのroundを避けるため変数名変更
+        choice = data["choice"]
 
-    sheet = spreadsheet.worksheet(f"Pairings_{round}")
-    records = sheet.get_all_records()
+        sheet = spreadsheet.worksheet(f"Pairings_{rnd}")
 
-    target_row_idx = None
-    target_col_letter = None
+        # 1回だけ読み込み（records は dict のリスト）
+        records = sheet.get_all_records()
 
-    for idx, row in enumerate(records, start=2):
-        if row.get("Group") == group:
-            for i in range(1, 4):
-                if str(row.get(f"Code{i}")) == code:
-                    target_row_idx = idx
-                    target_col_letter = chr(ord('E') + i)
-                    break
-        if target_row_idx:
-            break
+        target_row_idx = None   # シート上の行番号（2起点）
+        target_choice_col = None  # F/G/H のどれか
 
-    if target_row_idx and target_col_letter:
-        sheet.update(f"{target_col_letter}{target_row_idx}", [[choice]])
+        # 行/列の特定（型ズレに強くする）
+        for idx, row in enumerate(records, start=2):  # 2行目から
+            row_group_raw = row.get("Group")
+            try:
+                row_group = int(str(row_group_raw).strip())
+            except Exception:
+                row_group = None
 
+            if row_group == group:
+                for i in range(1, 4):  # Code1..3 / Choice1..3
+                    cell_code = str(row.get(f"Code{i}", "")).strip()
+                    if cell_code and cell_code == code:
+                        target_row_idx = idx
+                        # Choice1..3 は列F..H（E=5 → E+1=F, E+2=G, E+3=H）
+                        target_choice_col = chr(ord("E") + i)
+                        break
+            if target_row_idx:
+                break
+
+        if not target_row_idx or not target_choice_col:
+            return jsonify({"status": "not found"}), 404
+
+        # まず選択を書き込む
+        sheet.update(f"{target_choice_col}{target_row_idx}", [[choice]])
+
+        # いま手元にある records は古いので、変更箇所だけ差し替えて集計
         aim_count = 0
         noaim_count = 0
-        for row in records:
+
+        for r_idx, row in enumerate(records, start=2):
             for j in range(1, 4):
-                if row.get(f"Code{j}"):
-                    val = str(row.get(f"Choice{j}", "")).strip()
-                    if row.get("Group") == group and str(row.get(f"Code{j}")) == code:
-                        val = choice
-                    if val == "狙う":
-                        aim_count += 1
-                    elif val == "狙わない":
-                        noaim_count += 1
+                code_j = row.get(f"Code{j}")
+                if not code_j:
+                    continue
 
-        summary_sheet = spreadsheet.worksheet(f"Summary_{round}")
-        summary_sheet.update("A2", [[aim_count]])
-        summary_sheet.update("B2", [[noaim_count]])
+                # 元の値
+                val = str(row.get(f"Choice{j}", "")).strip()
 
-        return jsonify({"status": "ok"})
+                # さっき更新した該当セルだけは choice を反映して集計する
+                if r_idx == target_row_idx and (chr(ord("E") + j) == target_choice_col):
+                    val = choice
 
-    return jsonify({"status": "not found"}), 404
+                if val == "狙う":
+                    aim_count += 1
+                elif val == "狙わない":
+                    noaim_count += 1
+
+        # J2:K2 を一発で更新（リクエスト1回・速度/安定性UP）
+        sheet.update("J2:K2", [[aim_count, noaim_count]])
+
+        return jsonify({"status": "ok", "aim": aim_count, "noaim": noaim_count})
+
+    except Exception as e:
+        import traceback
+        print("ERROR in /submit:", e, traceback.format_exc(), flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route("/ping")
 def ping():
