@@ -10,7 +10,7 @@ import time
 app = Flask(__name__)
 
 # -----------------------------
-# keep-alive 用の /ping を3分おきに叩く
+# keep-alive 用 /ping を3分おきに叩く
 # -----------------------------
 def ping_render():
     while True:
@@ -19,7 +19,7 @@ def ping_render():
             print(f"[PING] Status: {res.status_code}", flush=True)
         except Exception as e:
             print(f"[PING ERROR] {e}", flush=True)
-        time.sleep(180)  # 3分
+        time.sleep(180)
 
 # -----------------------------
 # Google Sheets 認証
@@ -35,18 +35,33 @@ gc = gspread.authorize(creds)
 spreadsheet = gc.open("GolfPairingsApp2025")
 
 # -----------------------------
-# Players キャッシュ
+# Players キャッシュ（ヘッダーに依存しない読み方）
 # -----------------------------
 cache = {"Players": [], "code_to_name": {}, "lock": Lock()}
 
 def load_player_cache():
     with cache["lock"]:
-        player_sheet = spreadsheet.worksheet("Players")
-        player_records = player_sheet.get_all_records()
-        cache["Players"] = player_records
-        cache["code_to_name"] = {str(r["Code"]): r["Name"] for r in player_records}
+        sh = spreadsheet.worksheet("Players")
+        rows = sh.get_values("A2:B")  # [['101','山田 太郎'], ...]  ヘッダー無視
+        code_to_name = {}
+        for r in rows:
+            if not r:
+                continue
+            code = str(r[0]).strip() if len(r) > 0 else ""
+            name = str(r[1]).strip() if len(r) > 1 else ""
+            if code:
+                code_to_name[code] = name
+        cache["Players"] = rows
+        cache["code_to_name"] = code_to_name
 
-load_player_cache()
+# 起動時に失敗してもサービスを落とさない
+try:
+    load_player_cache()
+    print("[Players] cache loaded", flush=True)
+except Exception as e:
+    print("[WARN] load_player_cache failed:", e, flush=True)
+    cache["Players"] = []
+    cache["code_to_name"] = {}
 
 # -----------------------------
 # 画面表示
@@ -55,9 +70,12 @@ load_player_cache()
 def index():
     round_ = request.args.get("round", "1st")
     sheet = spreadsheet.worksheet(f"Pairings_{round_}")
-    records = sheet.get_all_records()
+    # ヘッダー空欄でも落ちないよう固定ヘッダー名を指定
+    records = sheet.get_all_records(
+        expected_headers=["Group","Code1","Code2","Code3","Choice1","Choice2","Choice3"]
+    )
 
-    code_to_name = cache["code_to_name"]  # キャッシュ利用
+    code_to_name = cache["code_to_name"]
 
     # 1行=1組（Code1..3 / Choice1..3）を展開
     groups = []
@@ -68,14 +86,12 @@ def index():
             code = row.get(f"Code{i}")
             choice = row.get(f"Choice{i}")
             if code:
-                group.append(
-                    {
-                        "name": code_to_name.get(str(code), "Unknown"),
-                        "code": str(code),
-                        "choice": choice,
-                        "group": group_number,
-                    }
-                )
+                group.append({
+                    "name": code_to_name.get(str(code), "Unknown"),
+                    "code": str(code),
+                    "choice": choice,
+                    "group": group_number,
+                })
         if group:
             groups.append(group)
 
@@ -83,7 +99,6 @@ def index():
 
 # -----------------------------
 # 選択反映（セル1か所だけ更新）
-# ★ 合計(J2/K2)の書き込みは完全に削除
 # -----------------------------
 @app.route("/submit", methods=["POST"])
 def submit():
@@ -94,19 +109,21 @@ def submit():
     choice = data["choice"]
 
     sheet = spreadsheet.worksheet(f"Pairings_{round_}")
-    records = sheet.get_all_records()  # 行と列を特定するために1回だけ読む
+    records = sheet.get_all_records(
+        expected_headers=["Group","Code1","Code2","Code3","Choice1","Choice2","Choice3"]
+    )
 
     target_row_idx = None
     target_col_letter = None
 
     # 対象セル（Choice列）を探す
-    for idx, row in enumerate(records, start=2):  # ヘッダ1行のため +1、さらに1-basedで +1
+    for idx, row in enumerate(records, start=2):  # 2行目からデータ
         if row.get("Group") == group:
             for i in range(1, 4):  # Code1..3
                 if str(row.get(f"Code{i}")) == code:
                     target_row_idx = idx
-                    # Choice1..3 は F..H 列（EがCode3なので Eの次=F が Choice1）
-                    target_col_letter = chr(ord("E") + i)
+                    # Choice1..3 は F..H 列（EがCode3 の次なので F=Choice1）
+                    target_col_letter = chr(ord("E") + i)  # i=1→F, 2→G, 3→H
                     break
         if target_row_idx:
             break
@@ -116,8 +133,6 @@ def submit():
 
     # 対象セルのみ更新（API 1回）
     sheet.update(f"{target_col_letter}{target_row_idx}", [[choice]])
-
-    # ★ 集計の書き込みはしない（シートの数式で自動集計）
     return jsonify({"status": "ok"})
 
 # -----------------------------
