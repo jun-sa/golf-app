@@ -10,7 +10,7 @@ import time
 app = Flask(__name__)
 
 # -----------------------------
-# keep-alive 用 /ping を3分おきに叩く
+# keep-alive 用 /ping を5分おきに叩く
 # -----------------------------
 def ping_render():
     while True:
@@ -19,7 +19,7 @@ def ping_render():
             print(f"[PING] Status: {res.status_code}", flush=True)
         except Exception as e:
             print(f"[PING ERROR] {e}", flush=True)
-        time.sleep(180)
+        time.sleep(300)
 
 # -----------------------------
 # Google Sheets 認証
