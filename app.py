@@ -32,7 +32,9 @@ creds = Credentials.from_service_account_file(
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"], scopes=SCOPES
 )
 gc = gspread.authorize(creds)
-spreadsheet = gc.open("GolfPairingsApp2025")
+
+SPREADSHEET_ID = os.environ["SPREADSHEET_ID"]
+spreadsheet = gc.open_by_key(SPREADSHEET_ID)
 
 # -----------------------------
 # Players キャッシュ（ヘッダーに依存しない読み方）
